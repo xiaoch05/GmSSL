@@ -94,11 +94,12 @@ int SM2_compute_message_digest(const EVP_MD *id_md, const EVP_MD *msg_md,
 
 int SM2_sign_setup(EC_KEY *ec_key, BN_CTX *ctx, BIGNUM **a, BIGNUM **b);
 ECDSA_SIG *SM2_do_sign_ex(const unsigned char *dgst, int dgstlen,
-	const BIGNUM *k, const BIGNUM *x, EC_KEY *ec_key);
+	const BIGNUM *k, const BIGNUM *x, EC_KEY *ec_key, BIGNUM **y);
 ECDSA_SIG *SM2_do_sign(const unsigned char *dgst, int dgst_len,
 	EC_KEY *ec_key);
 int SM2_do_verify(const unsigned char *dgst, int dgstlen,
 	const ECDSA_SIG *sig, EC_KEY *ec_key);
+EC_KEY* SM2_do_recover_publickey(const unsigned char *dgst, int dgstlen, const ECDSA_SIG *sig, unsigned char signsymbol);
 int SM2_sign_ex(int type, const unsigned char *dgst, int dgstlen,
 	unsigned char *sig, unsigned int *siglen,
 	const BIGNUM *k, const BIGNUM *x, EC_KEY *ec_key);
@@ -106,6 +107,11 @@ int SM2_sign(int type, const unsigned char *dgst, int dgstlen,
 	unsigned char *sig, unsigned int *siglen, EC_KEY *eckey);
 int SM2_verify(int type, const unsigned char *dgst, int dgstlen,
 	const unsigned char *sig, int siglen, EC_KEY *ec_key);
+int SM2_signraw(int type, const unsigned char *dgst, int dgstlen,
+	unsigned char *sig, unsigned int *siglen, EC_KEY *eckey);
+int SM2_verifyraw(int type, const unsigned char *dgst, int dgstlen,
+	const unsigned char *sig, int siglen, EC_KEY *ec_key);
+EC_KEY* SM2_recover_publickey(int type, const unsigned char *dgst, int dgstlen, const unsigned char *sig, int siglen);
 
 /* SM2 Public Key Encryption */
 

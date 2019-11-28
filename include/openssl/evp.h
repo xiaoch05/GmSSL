@@ -1262,6 +1262,7 @@ void EVP_PKEY_asn1_set_security_bits(EVP_PKEY_ASN1_METHOD *ameth,
 # define EVP_PKEY_OP_ENCRYPT             (1<<8)
 # define EVP_PKEY_OP_DECRYPT             (1<<9)
 # define EVP_PKEY_OP_DERIVE              (1<<10)
+# define EVP_PKEY_OP_RECOVER_PUBLIC      (1<<11)
 
 # define EVP_PKEY_OP_TYPE_SIG    \
         (EVP_PKEY_OP_SIGN | EVP_PKEY_OP_VERIFY | EVP_PKEY_OP_VERIFYRECOVER \
@@ -1361,6 +1362,9 @@ int EVP_PKEY_sign(EVP_PKEY_CTX *ctx,
                   const unsigned char *tbs, size_t tbslen);
 int EVP_PKEY_verify_init(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_verify(EVP_PKEY_CTX *ctx,
+                    const unsigned char *sig, size_t siglen,
+                    const unsigned char *tbs, size_t tbslen);
+int EVP_PKEY_recover_public(EVP_PKEY_CTX *ctx,
                     const unsigned char *sig, size_t siglen,
                     const unsigned char *tbs, size_t tbslen);
 int EVP_PKEY_verify_recover_init(EVP_PKEY_CTX *ctx);
@@ -1654,6 +1658,8 @@ int ERR_load_EVP_strings(void);
 # define EVP_F_EVP_PKEY_VERIFY_INIT                       143
 # define EVP_F_EVP_PKEY_VERIFY_RECOVER                    144
 # define EVP_F_EVP_PKEY_VERIFY_RECOVER_INIT               145
+# define EVP_F_EVP_PKEY_RECOVER_PUBLIC                    146
+# define EVP_F_EVP_PKEY_RECOVER_PUBLIC_INIT               147
 # define EVP_F_EVP_SIGNFINAL                              107
 # define EVP_F_EVP_VERIFYFINAL                            108
 # define EVP_F_INT_CTX_NEW                                157
