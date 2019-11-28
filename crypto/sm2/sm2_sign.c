@@ -69,13 +69,14 @@ static void sm2_sign_free(void *parent, void *ptr, CRYPTO_EX_DATA *ad,
 	}
 }
 
-static int sm2_sign_setup(EC_KEY *ec_key, BN_CTX *ctx_in, BIGNUM **kp, BIGNUM **xp)
+static int sm2_sign_setup(EC_KEY *ec_key, BN_CTX *ctx_in, BIGNUM **kp, BIGNUM **xp, BIGNUM **yp)
 {
 	int ret = 0;
 	const EC_GROUP *ec_group;
 	BN_CTX *ctx = NULL;
 	BIGNUM *k = NULL;
 	BIGNUM *x = NULL;
+	BIGNUM *y = NULL;
 	BIGNUM *order = NULL;
 	EC_POINT *point = NULL;
 
@@ -97,8 +98,9 @@ static int sm2_sign_setup(EC_KEY *ec_key, BN_CTX *ctx_in, BIGNUM **kp, BIGNUM **
 
 	k = BN_new();
 	x = BN_new();
+	y = BN_new();
 	order = BN_new();
-	if (!k || !x || !order) {
+	if (!k || !x || !y || !order) {
 		SM2err(SM2_F_SM2_SIGN_SETUP, ERR_R_MALLOC_FAILURE);
 		goto end;
 	}
@@ -162,12 +164,12 @@ static int sm2_sign_setup(EC_KEY *ec_key, BN_CTX *ctx_in, BIGNUM **kp, BIGNUM **
 		}
 
 		if (EC_METHOD_get_field_type(EC_GROUP_method_of(ec_group)) == NID_X9_62_prime_field) {
-			if (!EC_POINT_get_affine_coordinates_GFp(ec_group, point, x, NULL, ctx)) {
+			if (!EC_POINT_get_affine_coordinates_GFp(ec_group, point, x, y, ctx)) {
 				SM2err(SM2_F_SM2_SIGN_SETUP, ERR_R_EC_LIB);
 				goto end;
 			}
 		} else /* NID_X9_62_characteristic_two_field */ {
-			if (!EC_POINT_get_affine_coordinates_GF2m(ec_group, point, x, NULL, ctx)) {
+			if (!EC_POINT_get_affine_coordinates_GF2m(ec_group, point, x, y, ctx)) {
 				SM2err(SM2_F_SM2_SIGN_SETUP, ERR_R_EC_LIB);
 				goto end;
 			}
@@ -177,22 +179,33 @@ static int sm2_sign_setup(EC_KEY *ec_key, BN_CTX *ctx_in, BIGNUM **kp, BIGNUM **
 			SM2err(SM2_F_SM2_SIGN_SETUP, ERR_R_BN_LIB);
 			goto end;
 		}
+		if (!BN_nnmod(y, y, order, ctx)) {
+			SM2err(SM2_F_SM2_SIGN_SETUP, ERR_R_BN_LIB);
+			goto end;
+		}
 
 	} while (BN_is_zero(x));
 
 	/* clear old values if necessary */
 	BN_clear_free(*kp);
 	BN_clear_free(*xp);
+	if (yp != NULL) {
+	    BN_clear_free(*yp);
+	}
 
 	/* save the pre-computed values  */
 	*kp = k;
 	*xp = x;
+	if (yp != NULL) {
+	    *yp = y;
+	}
 	ret = 1;
 
 end:
 	if (!ret) {
 		BN_clear_free(k);
 		BN_clear_free(x);
+		BN_clear_free(y);
 	}
 	if (!ctx_in) {
 		BN_CTX_free(ctx);
@@ -203,7 +216,7 @@ end:
 }
 
 static ECDSA_SIG *sm2_do_sign(const unsigned char *dgst, int dgstlen,
-	const BIGNUM *in_k, const BIGNUM *in_x, EC_KEY *ec_key)
+	const BIGNUM *in_k, const BIGNUM *in_x, EC_KEY *ec_key, BIGNUM **ou_y)
 {
 	int ok = 0;
 	ECDSA_SIG *ret = NULL;
@@ -265,7 +278,7 @@ static ECDSA_SIG *sm2_do_sign(const unsigned char *dgst, int dgstlen,
 	do {
 		/* use or compute k and (kG).x */
 		if (!in_k || !in_x) {
-			if (!sm2_sign_setup(ec_key, ctx, &k, &ret->r)) {
+			if (!sm2_sign_setup(ec_key, ctx, &k, &ret->r, ou_y)) {
 				SM2err(SM2_F_SM2_DO_SIGN, ERR_R_ECDSA_LIB);
 				goto end;
 			}
@@ -382,6 +395,15 @@ end:
 	return ret;
 }
 
+static void debugprint(const EC_GROUP* ec_group, const EC_POINT* point, const BN_CTX* ctx)
+{
+	BIGNUM* prx = BN_new();
+    BIGNUM* pry = BN_new();
+    if (!EC_POINT_get_affine_coordinates_GF2m(ec_group, point, prx, pry, ctx)) {
+		return;
+    }
+}
+
 int sm2_do_verify(const unsigned char *dgst, int dgstlen,
 	const ECDSA_SIG *sig, EC_KEY *ec_key)
 {
@@ -468,6 +490,7 @@ int sm2_do_verify(const unsigned char *dgst, int dgstlen,
 	}
 #endif
 
+
 	/* compute (x, y) = sG + tP, P is pub_key */
 	if (!(point = EC_POINT_new(ec_group))) {
 		SM2err(SM2_F_SM2_DO_VERIFY, ERR_R_MALLOC_FAILURE);
@@ -514,26 +537,132 @@ end:
 	return ret;
 }
 
+EC_KEY* sm2_do_recover_publickey(const unsigned char *dgst, int dgstlen, const ECDSA_SIG *sig, unsigned char signsymbol)
+{
+	// publickey = (s+r)^-1  (R-s*G)
+	// r = sig->r
+	// s = sig->s
+	BIGNUM* t = NULL;
+	BIGNUM* order = NULL;
+	BIGNUM* Rx = NULL;
+	BIGNUM* e = NULL;
+	BIGNUM* tmps = NULL;
+	BN_CTX* ctx = NULL;
+	EC_POINT *pointR = NULL;
+	EC_POINT *pubpoint = NULL;
+	EC_GROUP* ec_group = NULL;
+	t = BN_new();
+	order = BN_new();
+	Rx = BN_new();
+	e = BN_new();
+	ctx = BN_CTX_new();
+
+	if (!t || !order || !Rx || !e || !ctx) {
+		goto error;
+	}
+
+	ec_group = EC_GROUP_new_by_curve_name(NID_sm2p256v1);
+	if (!ec_group) {
+		goto error;
+	}
+
+	if (!EC_GROUP_get_order(ec_group, order, ctx)) {
+        goto error;
+    }
+
+    if (!BN_add(t, sig->r, sig->s)) {
+		goto error;
+	}
+	if (!BN_mod_inverse(t, t, order, ctx)) {
+		goto error;
+	}
+
+	if (!BN_bin2bn(dgst, dgstlen, e)) {
+        goto error;
+    }
+
+	if (!BN_mod_sub(Rx, sig->r, e, order, ctx)) {
+		goto error;
+	}
+
+	pointR = EC_POINT_new(ec_group);
+	if (!pointR) {
+		goto error;
+	}
+
+	if (!EC_POINT_set_compressed_coordinates_GFp(ec_group, pointR, Rx, signsymbol, ctx)) {
+		goto error;
+	}
+
+	pubpoint = EC_POINT_new(ec_group);
+	if (!EC_POINT_mul(ec_group, pubpoint, sig->s, NULL, NULL, ctx)) {
+		goto error;
+	}
+
+	EC_POINT* negpubpoint = EC_POINT_new(ec_group);
+	BIGNUM* px = BN_new(); 
+	BIGNUM* py = BN_new(); 
+	if (!EC_POINT_get_affine_coordinates_GF2m(ec_group, pubpoint, px, py, ctx)) {
+		goto error;
+	}
+
+	int is_negative = BN_is_negative(py);
+    if (is_negative == 1) {
+        BN_set_negative(py, 0);
+    } else {
+        BN_set_negative(py, 1);
+    }
+
+    if (!EC_POINT_set_affine_coordinates_GF2m(ec_group, negpubpoint, px, py, ctx)) {
+        goto error;
+    }
+
+	// publicpoint = t*(R-s*G)
+	EC_POINT* publicpoint = EC_POINT_new(ec_group);
+	if (!EC_POINT_add(ec_group, publicpoint, negpubpoint, pointR, ctx)) {
+		goto error;
+	}
+
+	if (!EC_POINT_mul(ec_group, publicpoint, NULL, publicpoint, t, ctx)) {
+        goto error;
+    }
+	
+	EC_KEY* ecKey = EC_KEY_new_by_curve_name(NID_sm2p256v1);
+	if (1 != EC_KEY_set_public_key(ecKey, publicpoint)) {
+        goto error;
+    }
+
+	return ecKey;
+
+error:
+	return NULL;
+}
+
 int SM2_sign_setup(EC_KEY *ec_key, BN_CTX *ctx_in, BIGNUM **kp, BIGNUM **xp)
 {
-	return sm2_sign_setup(ec_key, ctx_in, kp, xp);
+	return sm2_sign_setup(ec_key, ctx_in, kp, xp, NULL);
 }
 
 ECDSA_SIG *SM2_do_sign_ex(const unsigned char *dgst, int dgstlen,
-	const BIGNUM *kp, const BIGNUM *xp, EC_KEY *ec_key)
+	const BIGNUM *kp, const BIGNUM *xp, EC_KEY *ec_key, BIGNUM **yp)
 {
-	return sm2_do_sign(dgst, dgstlen, kp, xp, ec_key);
+	return sm2_do_sign(dgst, dgstlen, kp, xp, ec_key, yp);
 }
 
 ECDSA_SIG *SM2_do_sign(const unsigned char *dgst, int dgstlen, EC_KEY *ec_key)
 {
-	return SM2_do_sign_ex(dgst, dgstlen, NULL, NULL, ec_key);
+	return SM2_do_sign_ex(dgst, dgstlen, NULL, NULL, ec_key, NULL);
 }
 
 int SM2_do_verify(const unsigned char *dgst, int dgstlen,
 	const ECDSA_SIG *sig, EC_KEY *ec_key)
 {
 	return sm2_do_verify(dgst, dgstlen, sig, ec_key);
+}
+
+EC_KEY* SM2_do_recover_publickey(const unsigned char *dgst, int dgstlen, const ECDSA_SIG *sig, unsigned char signsymbol)
+{
+	return sm2_do_recover_publickey(dgst, dgstlen, sig, signsymbol);
 }
 
 int SM2_sign_ex(int type, const unsigned char *dgst, int dgstlen,
@@ -544,7 +673,7 @@ int SM2_sign_ex(int type, const unsigned char *dgst, int dgstlen,
 
 	RAND_seed(dgst, dgstlen);
 
-	if (!(s = SM2_do_sign_ex(dgst, dgstlen, k, x, ec_key))) {
+	if (!(s = SM2_do_sign_ex(dgst, dgstlen, k, x, ec_key, NULL))) {
 		*siglen = 0;
 		return 0;
 	}
@@ -559,6 +688,38 @@ int SM2_sign(int type, const unsigned char *dgst, int dgstlen,
 	unsigned char *sig, unsigned int *siglen, EC_KEY *ec_key)
 {
 	return SM2_sign_ex(type, dgst, dgstlen, sig, siglen, NULL, NULL, ec_key);
+}
+
+int SM2_signraw(int type, const unsigned char *dgst, int dgstlen,
+    unsigned char *sig, unsigned int *siglen, EC_KEY *ec_key)
+{
+	ECDSA_SIG *s = NULL;
+	int lenr = 0;
+	int lens = 0;
+	BIGNUM* sigsymbol = NULL;
+    if (!(s = SM2_do_sign_ex(dgst, dgstlen, NULL, NULL, ec_key, &sigsymbol))) {
+        *siglen = 0;
+        return 0;
+    }
+	lenr = BN_bn2binpad(s->r, sig, 32);
+	if (lenr != 32) {
+		goto error;
+	}
+	lens = BN_bn2binpad(s->s, sig + lenr, 32);
+	if (lens != 32) {
+		goto error;
+	}
+
+	*(sig+lenr+lens) = BN_is_odd(sigsymbol);
+	BN_free(sigsymbol);
+	ECDSA_SIG_free(s);
+	*siglen = 65;
+    return 1;
+error:
+	BN_free(sigsymbol);
+	ECDSA_SIG_free(s);
+    *siglen = 0;
+	return 0;
 }
 
 int SM2_verify(int type, const unsigned char *dgst, int dgstlen,
@@ -591,4 +752,66 @@ err:
 
 	ECDSA_SIG_free(s);
 	return ret;
+}
+
+int SM2_verifyraw(int type, const unsigned char *dgst, int dgstlen,
+    const unsigned char *sig, int siglen, EC_KEY *ec_key)
+{
+    ECDSA_SIG *s;
+    const unsigned char *p = sig;
+	int rlen = 32;
+	int ret = 0;
+	BIGNUM* bnr = NULL;
+	BIGNUM* bns = NULL;
+
+	if (siglen != 64) {
+		return 0;
+	}
+
+    if (!(s = ECDSA_SIG_new())) {
+        return 0;
+    }
+
+	bnr = BN_bin2bn(p, rlen, bnr);
+	bns = BN_bin2bn(p+rlen, rlen, bns);
+    s->r = bnr;
+	s->s = bns;
+
+    ret = SM2_do_verify(dgst, dgstlen, s, ec_key);
+	ECDSA_SIG_free(s);
+	return ret;
+err:
+    ECDSA_SIG_free(s);
+    return ret;
+}
+
+EC_KEY* SM2_recover_publickey(int type, const unsigned char *dgst, int dgstlen, const unsigned char *sig, int siglen)
+{
+	ECDSA_SIG *s;
+    const unsigned char *p = sig;
+    int rlen = 32;
+	unsigned char signsymbol;
+    EC_KEY* ret = NULL;
+    BIGNUM* bnr = NULL;
+    BIGNUM* bns = NULL;
+
+    if (siglen != 65) {
+        return NULL;
+    }
+
+    if (!(s = ECDSA_SIG_new())) {
+        return NULL;
+    }
+
+    bnr = BN_bin2bn(p, rlen, bnr);
+    bns = BN_bin2bn(p+rlen, rlen, bns);
+    s->r = bnr;
+    s->s = bns;
+	signsymbol = *(p+2*rlen);
+
+    ret = SM2_do_recover_publickey(dgst, dgstlen, s, signsymbol);
+	return ret;
+err:
+    ECDSA_SIG_free(s);
+    return ret;
 }

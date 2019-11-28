@@ -197,7 +197,7 @@ static int pkey_ec_sign(EVP_PKEY_CTX *ctx, unsigned char *sig, size_t *siglen,
 
 #ifndef OPENSSL_NO_SM2
     if (dctx->ec_scheme == NID_sm_scheme)
-        ret = SM2_sign(NID_undef, tbs, tbslen, sig, &sltmp, ec);
+        ret = SM2_signraw(NID_undef, tbs, tbslen, sig, &sltmp, ec);
     else
 #endif
 
@@ -224,13 +224,31 @@ static int pkey_ec_verify(EVP_PKEY_CTX *ctx,
 
 #ifndef OPENSSL_NO_SM2
     if (dctx->ec_scheme == NID_sm_scheme)
-        ret = SM2_verify(NID_undef, tbs, tbslen, sig, siglen, ec);
+        ret = SM2_verifyraw(NID_undef, tbs, tbslen, sig, siglen, ec);
     else
 #endif
 
     ret = ECDSA_verify(type, tbs, tbslen, sig, siglen, ec);
 
     return ret;
+}
+
+static int pkey_ec_recover_publickey(EVP_PKEY_CTX *ctx,
+                          const unsigned char *sig, size_t siglen,
+                          const unsigned char *tbs, size_t tbslen)
+{
+	EC_KEY* ecKey = NULL;
+	EC_PKEY_CTX *dctx = ctx->data;
+
+#ifndef OPENSSL_NO_SM2
+    if (dctx->ec_scheme == NID_sm_scheme) {
+        ecKey = SM2_recover_publickey(NID_undef, tbs, tbslen, sig, siglen);
+		ctx->pkey->pkey.ec = ecKey;
+		return 1;
+	}
+#endif
+
+    return -1;
 }
 
 #ifndef OPENSSL_NO_SM2
@@ -747,5 +765,6 @@ const EVP_PKEY_METHOD ec_pkey_meth = {
     0,
 #endif
     pkey_ec_ctrl,
-    pkey_ec_ctrl_str
+    pkey_ec_ctrl_str,
+	pkey_ec_recover_publickey
 };

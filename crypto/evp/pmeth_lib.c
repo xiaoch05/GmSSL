@@ -475,6 +475,16 @@ void EVP_PKEY_meth_set_verify(EVP_PKEY_METHOD *pmeth,
     pmeth->verify = verify;
 }
 
+void EVP_PKEY_meth_set_recover_public(EVP_PKEY_METHOD *pmeth,
+                              int (*recover_public) (EVP_PKEY_CTX *ctx,
+                                             const unsigned char *sig,
+                                             size_t siglen,
+                                             const unsigned char *tbs,
+                                             size_t tbslen))
+{
+    pmeth->recover_publickey = recover_public;
+}
+
 void EVP_PKEY_meth_set_verify_recover(EVP_PKEY_METHOD *pmeth,
                                       int (*verify_recover_init) (EVP_PKEY_CTX
                                                                   *ctx),

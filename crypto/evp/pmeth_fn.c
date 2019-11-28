@@ -99,6 +99,36 @@ int EVP_PKEY_verify(EVP_PKEY_CTX *ctx,
     return ctx->pmeth->verify(ctx, sig, siglen, tbs, tbslen);
 }
 
+/*
+int EVP_PKEY_recover_public_init(EVP_PKEY_CTX *ctx)
+{
+    int ret;
+    if (!ctx || !ctx->pmeth || !ctx->pmeth->recover_publickey) {
+        EVPerr(EVP_F_EVP_PKEY_RECOVER_PUBLIC_INIT,
+               EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+        return -2;
+    }
+    ctx->operation = EVP_PKEY_OP_RECOVER_PUBLIC;
+    return 1;
+}*/
+
+int EVP_PKEY_recover_public(EVP_PKEY_CTX *ctx,
+                    const unsigned char *sig, size_t siglen,
+                    const unsigned char *tbs, size_t tbslen)
+{
+    if (!ctx || !ctx->pmeth || !ctx->pmeth->recover_publickey) {
+        EVPerr(EVP_F_EVP_PKEY_RECOVER_PUBLIC,
+               EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+        return -2;
+    }
+	/*
+    if (ctx->operation != EVP_PKEY_OP_RECOVER_PUBLIC) {
+        EVPerr(EVP_F_EVP_PKEY_RECOVER_PUBLIC, EVP_R_OPERATON_NOT_INITIALIZED);
+        return -1;
+    }*/
+    return ctx->pmeth->recover_publickey(ctx, sig, siglen, tbs, tbslen);
+}
+
 int EVP_PKEY_verify_recover_init(EVP_PKEY_CTX *ctx)
 {
     int ret;
