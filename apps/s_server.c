@@ -2166,7 +2166,7 @@ static int sv_body(int s, int stype, unsigned char *context)
 
         read_from_terminal = 0;
         read_from_sslcon = SSL_has_pending(con)
-                           || (async && SSL_waiting_for_async(con));
+                           || (async);
 
         if (!read_from_sslcon) {
             FD_ZERO(&readfds);
@@ -2373,7 +2373,7 @@ static int sv_body(int s, int stype, unsigned char *context)
              * waiting for async then we shouldn't go back into
              * init_ssl_connection
              */
-            if ((!async || !SSL_waiting_for_async(con))
+            if ((!async)
                     && !SSL_is_init_finished(con)) {
                 i = init_ssl_connection(con);
 
@@ -2548,7 +2548,7 @@ static int init_ssl_connection(SSL *con)
                 retry = BIO_sock_should_retry(i);
         }
 #endif
-    } while (i < 0 && SSL_waiting_for_async(con));
+    } while (i < 0);
 
     if (i <= 0) {
         if ((dtlslisten && i == 0)
@@ -2738,7 +2738,7 @@ static int www_body(int s, int stype, unsigned char *context)
     for (;;) {
         i = BIO_gets(io, buf, bufsize - 1);
         if (i < 0) {            /* error */
-            if (!BIO_should_retry(io) && !SSL_waiting_for_async(con)) {
+            if (!BIO_should_retry(io)) {
                 if (!s_quiet)
                     ERR_print_errors(bio_err);
                 goto err;
@@ -3005,8 +3005,7 @@ static int www_body(int s, int stype, unsigned char *context)
 #endif
                     k = BIO_write(io, &(buf[j]), i - j);
                     if (k <= 0) {
-                        if (!BIO_should_retry(io)
-                            && !SSL_waiting_for_async(con))
+                        if (!BIO_should_retry(io))
                             goto write_error;
                         else {
                             BIO_printf(bio_s_out, "rwrite W BLOCK\n");
