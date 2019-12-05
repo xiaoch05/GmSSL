@@ -1,4 +1,4 @@
-
+apk add git-perl
 ./config no-async --prefix=/usr/local/lib/gm
 make update
 make -j
