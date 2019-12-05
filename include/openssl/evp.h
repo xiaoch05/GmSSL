@@ -1658,8 +1658,8 @@ int ERR_load_EVP_strings(void);
 # define EVP_F_EVP_PKEY_VERIFY_INIT                       143
 # define EVP_F_EVP_PKEY_VERIFY_RECOVER                    144
 # define EVP_F_EVP_PKEY_VERIFY_RECOVER_INIT               145
-# define EVP_F_EVP_PKEY_RECOVER_PUBLIC                    146
-# define EVP_F_EVP_PKEY_RECOVER_PUBLIC_INIT               147
+# define EVP_F_EVP_PKEY_RECOVER_PUBLIC                    246
+# define EVP_F_EVP_PKEY_RECOVER_PUBLIC_INIT               247
 # define EVP_F_EVP_SIGNFINAL                              107
 # define EVP_F_EVP_VERIFYFINAL                            108
 # define EVP_F_INT_CTX_NEW                                157

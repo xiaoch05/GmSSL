@@ -815,22 +815,6 @@ int EC_POINT_invert(const EC_GROUP *group, EC_POINT *a, BN_CTX *ctx)
     return group->meth->invert(group, a, ctx);
 }
 
-int EC_POINT_mirror(EC_POINT *a)
-{
-	int is_negative = BN_is_negative(a->Y);
-	if (is_negative == 1) {
-        BN_set_negative(a->Y, 0);
-    } else {
-        BN_set_negative(a->Y, 1);
-    }
-	if (is_negative != BN_is_negative(a->Y)) {
-		return 1;
-	} else {
-		return 0;
-	}
-	return 1;
-}
-
 int EC_POINT_is_at_infinity(const EC_GROUP *group, const EC_POINT *point)
 {
     if (group->meth->is_at_infinity == 0) {
