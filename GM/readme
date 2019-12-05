@@ -1,0 +1,9 @@
+
+./config no-async --prefix=/usr/local/lib/gm
+make update
+make -j
+make install
+gcc -c gm.c -o gm.o  -I./include
+# delete libcrypto.so libssl.so
+gcc -shared -fPIC -o libgm.so gm.o -L. -lcrypto -lssl -g
+
